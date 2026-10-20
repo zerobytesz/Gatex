@@ -1,0 +1,9 @@
+target/
+logs/
+*.log
+*.pid
+.idea/
+*.iml
+.vscode/
+.DS_Store
+jmeter/results/

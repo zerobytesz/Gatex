@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gateway Threat Monitor</title>
+<style>
+  :root {
+    --paper: #eef1f4;
+    --surface: #ffffff;
+    --ink: #17212b;
+    --ink-2: #4a5866;
+    --ink-3: #7b8794;
+    --rule: #d6dde3;
+    --rule-soft: #e7ecf0;
+    --cobalt: #2f5da8;
+    --cobalt-ink: #ffffff;
+    --allow: #2e7d5b;
+    --throttle: #b8901a;
+    --strong: #d0632a;
+    --block: #b3261e;
+    --allow-wash: #e3f1ea;
+    --throttle-wash: #f7efd6;
+    --strong-wash: #fae6da;
+    --block-wash: #f8dfdd;
+    --radius-lg: 14px;
+    --radius-sm: 6px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #12181f; --surface: #1a222b; --ink: #e8edf2; --ink-2: #b3bfcb; --ink-3: #8593a1;
+      --rule: #2c3743; --rule-soft: #232d38; --cobalt: #7ea6e8; --cobalt-ink: #0d1520;
+      --allow: #4fbf8a; --throttle: #e0b93f; --strong: #f08a50; --block: #f0645b;
+      --allow-wash: #18332a; --throttle-wash: #3a3218; --strong-wash: #3d2618; --block-wash: #401c1b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12181f; --surface: #1a222b; --ink: #e8edf2; --ink-2: #b3bfcb; --ink-3: #8593a1;
+    --rule: #2c3743; --rule-soft: #232d38; --cobalt: #7ea6e8; --cobalt-ink: #0d1520;
+    --allow: #4fbf8a; --throttle: #e0b93f; --strong: #f08a50; --block: #f0645b;
+    --allow-wash: #18332a; --throttle-wash: #3a3218; --strong-wash: #3d2618; --block-wash: #401c1b;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { background: var(--paper); }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+
+  /* ---------- header ---------- */
+  .top {
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    padding: 18px 28px; border-bottom: 1px solid var(--rule); background: var(--surface);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+  .brand svg { flex: none; }
+  .brand h1 { font-size: 18px; line-height: 1.2; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  .brand p { margin: 0; font-size: 13px; color: var(--ink-3); }
+  .live { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--allow); box-shadow: 0 0 0 0 var(--allow); }
+  .live.on i { animation: beat 2s infinite; }
+  .live.off i { background: var(--block); }
+  @keyframes beat { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--allow) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .who { font-size: 13px; color: var(--ink-3); }
+  .ghost { background: none; border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px; cursor: pointer; color: var(--ink-2); }
+  .ghost:hover { border-color: var(--ink-3); color: var(--ink); }
+
+  main { max-width: 1440px; margin: 0 auto; padding: 24px 28px 48px; }
+  .panel, .ladder { min-width: 0; }
+  body { overflow-x: hidden; }
+
+  /* ---------- summary sentence ---------- */
+  .summary { font-size: 22px; line-height: 1.35; font-weight: 450; margin: 4px 0 22px; max-width: 70ch; letter-spacing: -0.01em; }
+  .summary b { font-weight: 700; }
+  .summary .bad { color: var(--block); }
+  .summary .muted { color: var(--ink-3); }
+
+  /* ---------- threat ladder (signature element) ---------- */
+  .ladder { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-lg); padding: 20px 22px 14px; }
+  .ladder-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .ladder-head h2 { font-size: 16px; margin: 0; font-weight: 650; }
+  .ladder-head p { margin: 0; font-size: 13px; color: var(--ink-3); }
+  .track { position: relative; height: 236px; border-radius: 10px; overflow: hidden; }
+  .zone { position: absolute; top: 0; bottom: 0; }
+  .zone.z0 { left: 0; width: 30%; background: var(--allow-wash); }
+  .zone.z1 { left: 30%; width: 30%; background: var(--throttle-wash); }
+  .zone.z2 { left: 60%; width: 20%; background: var(--strong-wash); }
+  .zone.z3 { left: 80%; width: 20%; background: var(--block-wash); }
+  .zone + .zone { border-left: 1px dashed color-mix(in srgb, var(--ink-3) 45%, transparent); }
+  .zone-name { position: absolute; top: 10px; left: 12px; font-size: 13px; font-weight: 650; }
+  .z0 .zone-name { color: var(--allow); } .z1 .zone-name { color: var(--throttle); }
+  .z2 .zone-name { color: var(--strong); } .z3 .zone-name { color: var(--block); }
+  .zone-act { position: absolute; top: 28px; left: 12px; right: 8px; font-size: 12px; color: var(--ink-2); }
+  .dot {
+    position: absolute; display: flex; align-items: center; gap: 8px; transform: translate(-7px, -50%);
+    transition: left .7s cubic-bezier(.2,.8,.2,1), top .4s ease; white-space: nowrap; pointer-events: auto;
+  }
+  .dot i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ink-3); flex: none; }
+  .dot span { font-size: 12.5px; background: var(--surface); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink); }
+  .dot.flip { flex-direction: row-reverse; transform: translate(calc(-100% + 7px), -50%); }
+  .dot.blocked i { animation: ring 1.6s ease-out 2; }
+  @keyframes ring { 0% { box-shadow: 0 0 0 1px var(--block), 0 0 0 0 color-mix(in srgb, var(--block) 60%, transparent); } 100% { box-shadow: 0 0 0 1px var(--block), 0 0 0 12px transparent; } }
+  .axis { position: relative; height: 22px; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+  .axis span { position: absolute; transform: translateX(-50%); }
+  .axis span:first-child { transform: none; } .axis span:last-child { transform: translateX(-100%); }
+  .track-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-2); font-size: 14px; text-align: center; padding: 0 20px; }
+
+  /* ---------- body grid ---------- */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; margin-top: 20px; align-items: start; }
+  @media (max-width: 1080px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-lg); }
+  .panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 10px; flex-wrap: wrap; }
+  .panel > header h2 { font-size: 16px; margin: 0; font-weight: 650; }
+  .panel > header p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-weight: 550; color: var(--ink-3); padding: 8px 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--rule-soft); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  .scroll { max-height: 440px; overflow: auto; }
+  .client { font-weight: 600; }
+  .client small { display: block; font-weight: 400; color: var(--ink-3); font-size: 12px; }
+  .level { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+  .level::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .LOW { color: var(--allow); } .MEDIUM { color: var(--throttle); } .HIGH { color: var(--strong); } .CRITICAL { color: var(--block); }
+  .risk { display: flex; align-items: center; gap: 10px; min-width: 130px; }
+  .meter { flex: 1; height: 6px; border-radius: 3px; background: var(--rule-soft); overflow: hidden; }
+  .meter > span { display: block; height: 100%; border-radius: 3px; transition: width .6s ease; }
+  .reason { color: var(--ink-2); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .countdown { color: var(--block); font-weight: 600; white-space: nowrap; }
+  .btn {
+    border: 1px solid transparent; background: var(--cobalt); color: var(--cobalt-ink); border-radius: var(--radius-sm);
+    padding: 7px 14px; cursor: pointer; font-weight: 600; font-size: 13.5px;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.quiet { background: transparent; color: var(--cobalt); border-color: color-mix(in srgb, var(--cobalt) 45%, transparent); }
+  .btn.small { padding: 4px 10px; font-size: 12.5px; }
+  .btn[disabled] { opacity: .55; cursor: progress; }
+
+  /* scenarios */
+  .scenarios { padding: 4px 18px 18px; display: grid; gap: 10px; }
+  .scenario { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--rule-soft); }
+  .scenario:first-child { border-top: 0; }
+  .scenario h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .scenario p { margin: 0; grid-column: 1 / 2; font-size: 12.5px; color: var(--ink-2); }
+  .scenario .btn { grid-row: 1 / 3; grid-column: 2; }
+
+  .traffic { padding: 4px 18px 18px; }
+  .traffic svg { width: 100%; height: 70px; display: block; }
+  .traffic dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 12px 0 0; font-size: 13.5px; }
+  .traffic dt { color: var(--ink-2); } .traffic dd { margin: 0; font-weight: 650; text-align: right; }
+
+  /* events */
+  .events { margin-top: 20px; }
+  .filters { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; }
+  .filters button { border: 0; background: none; padding: 4px 12px; border-radius: 999px; cursor: pointer; color: var(--ink-2); font-size: 13px; }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .status { font-weight: 650; }
+  .s2 { color: var(--allow); } .s4 { color: var(--strong); } .s429 { color: var(--block); } .s5 { color: var(--block); }
+  .path { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+  .method { font-weight: 600; color: var(--ink); margin-right: 6px; }
+  tr.fresh td { animation: fresh 1.4s ease-out; }
+  @keyframes fresh { from { background: color-mix(in srgb, var(--cobalt) 12%, transparent); } to { background: transparent; } }
+  .empty { padding: 26px 18px; color: var(--ink-2); font-size: 14px; }
+
+  .foot { margin-top: 18px; font-size: 13px; color: var(--ink-3); }
+  .foot a { color: var(--cobalt); }
+
+  /* login */
+  .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .login { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-lg); padding: 28px; }
+  .login h1 { font-size: 21px; margin: 14px 0 6px; letter-spacing: -0.01em; }
+  .login p { margin: 0 0 18px; color: var(--ink-2); font-size: 14px; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; font-size: 13.5px; font-weight: 550; }
+  .field input { padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--paper); font-weight: 400; }
+  .field input:focus { border-color: var(--cobalt); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--cobalt) 22%, transparent); }
+  .error { color: var(--block); font-size: 13.5px; min-height: 20px; margin-bottom: 10px; }
+  .login .btn { width: 100%; padding: 10px; font-size: 15px; }
+  .hint { margin-top: 14px; font-size: 12.5px; color: var(--ink-3); }
+
+  /* toast */
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; background: var(--ink); color: var(--surface);
+           padding: 10px 18px; border-radius: 999px; font-size: 14px; transition: opacity .25s, transform .25s; pointer-events: none; max-width: calc(100% - 32px); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 720px) {
+    .top, main { padding-left: 16px; padding-right: 16px; }
+    .summary { font-size: 18px; }
+    .zone-act { display: none; }
+    .hide-sm { display: none; }
+    .events td:first-child, .events th:first-child { display: none; }
+    .path { max-width: 160px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 32 32">
+    <path d="M16 2 4 7v8c0 7.2 5 13.3 12 15 7-1.7 12-7.8 12-15V7L16 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M9 17h4l2-5 3 9 2-4h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<!-- ============ sign-in ============ -->
+<div class="login-wrap" id="loginView">
+  <form class="login" id="loginForm" novalidate>
+    <svg width="34" height="34" style="color:var(--cobalt)"><use href="#mark"/></svg>
+    <h1>Gateway threat monitor</h1>
+    <p>Watch clients being scored, throttled and blocked in real time. Sign in with an administrator account.</p>
+    <label class="field">Username<input id="u" value="admin" autocomplete="username" required></label>
+    <label class="field">Password<input id="p" type="password" value="admin123" autocomplete="current-password" required></label>
+    <div class="error" id="loginErr" role="alert"></div>
+    <button class="btn" type="submit" id="loginBtn">Sign in</button>
+    <div class="hint">Default administrator: admin / admin123</div>
+  </form>
+</div>
+
+<!-- ============ monitor ============ -->
+<div id="app" hidden>
+  <div class="top">
+    <div class="brand">
+      <svg width="30" height="30" style="color:var(--cobalt)"><use href="#mark"/></svg>
+      <div>
+        <h1>Smart API Gateway</h1>
+        <p>Adaptive threat detection</p>
+      </div>
+    </div>
+    <span class="live on" id="live"><i></i><span id="liveText">Live</span></span>
+    <span class="who">Signed in as <b id="whoName">admin</b></span>
+    <button class="ghost" id="themeBtn" type="button" aria-label="Switch colour theme">Dark mode</button>
+    <button class="ghost" id="logoutBtn" type="button">Sign out</button>
+  </div>
+
+  <main>
+    <p class="summary" id="summary" aria-live="polite">Connecting to the gateway…</p>
+
+    <section class="ladder" aria-labelledby="ladderTitle">
+      <div class="ladder-head">
+        <h2 id="ladderTitle">Where each client stands</h2>
+        <p>Position is the client's risk score. Crossing a line changes what the gateway does to its requests.</p>
+      </div>
+      <div class="track" id="track">
+        <div class="zone z0"><div class="zone-name">Allow</div><div class="zone-act">Full rate limit</div></div>
+        <div class="zone z1"><div class="zone-name">Throttle</div><div class="zone-act">+100 ms, tighter limit</div></div>
+        <div class="zone z2"><div class="zone-name">Strong throttle</div><div class="zone-act">+300 ms, strict limit</div></div>
+        <div class="zone z3"><div class="zone-name">Block</div><div class="zone-act">HTTP 429 until the block expires</div></div>
+        <div id="dots"></div>
+        <div class="track-empty" id="trackEmpty">No clients yet. Call the API, or start an attack from the panel below.</div>
+      </div>
+      <div class="axis" aria-hidden="true"><span style="left:0">0</span><span style="left:30%">30</span><span style="left:60%">60</span><span style="left:80%">80</span><span style="left:100%">100</span></div>
+    </section>
+
+    <div class="grid">
+      <section class="panel" aria-labelledby="clientsTitle">
+        <header>
+          <div>
+            <h2 id="clientsTitle">Clients</h2>
+            <p>Users are tracked by their login, other traffic by IP address. Highest risk first.</p>
+          </div>
+        </header>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Client</th><th>Level</th><th>Risk</th><th class="hide-sm">Requests (10 s)</th><th class="hide-sm">Why</th><th>Status</th></tr></thead>
+            <tbody id="clients"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div style="display:grid; gap:20px">
+        <section class="panel" aria-labelledby="tryTitle">
+          <header><div><h2 id="tryTitle">Try an attack</h2><p>Simulated clients go through the same engine as real traffic.</p></div></header>
+          <div class="scenarios">
+            <div class="scenario">
+              <h3>Request flood</h3>
+              <p>About 30 requests per second for 8 seconds.</p>
+              <button class="btn" data-demo="attack" data-done="Flood started: watch sim:attacker move right">Start flood</button>
+            </div>
+            <div class="scenario">
+              <h3>Injection probing</h3>
+              <p>SQL injection and path traversal, one request every 1.5 s.</p>
+              <button class="btn" data-demo="injection" data-done="Probing started: watch sim:injector">Start probing</button>
+            </div>
+            <div class="scenario">
+              <h3>Normal request</h3>
+              <p>One well-behaved request, for comparison.</p>
+              <button class="btn quiet" data-demo="normal" data-done="Normal request sent">Send request</button>
+            </div>
+            <div class="scenario">
+              <h3>Clear simulations</h3>
+              <p>Remove the simulated clients and their blocks.</p>
+              <button class="btn quiet" data-demo="reset" data-done="Simulated clients cleared">Clear</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="trafficTitle">
+          <header><div><h2 id="trafficTitle">Traffic</h2><p>Requests seen by the gateway in the last 10 seconds.</p></div></header>
+          <div class="traffic">
+            <svg id="spark" viewBox="0 0 300 70" preserveAspectRatio="none" role="img" aria-label="Requests in the last 10 seconds over time"></svg>
+            <dl>
+              <dt>Requests in the last 10 s</dt><dd id="mReq">–</dd>
+              <dt>Rate limits running at</dt><dd id="mHealth">–</dd>
+              <dt>Requests denied (429)</dt><dd id="mDenied">–</dd>
+              <dt>Requests checked</dt><dd id="mTotal">–</dd>
+            </dl>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <section class="panel events" aria-labelledby="eventsTitle">
+      <header>
+        <div><h2 id="eventsTitle">Request log</h2><p>Every request the gateway checked, newest first.</p></div>
+        <div class="tools">
+          <div class="filters" role="group" aria-label="Filter requests">
+            <button type="button" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-filter="denied" aria-pressed="false">Denied</button>
+            <button type="button" data-filter="errors" aria-pressed="false">Errors</button>
+          </div>
+          <button class="ghost" id="pauseBtn" type="button" aria-pressed="false">Pause</button>
+        </div>
+      </header>
+      <div class="scroll" style="max-height:380px">
+        <table>
+          <thead><tr><th>Time</th><th>Client</th><th>Request</th><th>Status</th><th>Risk</th><th>Gateway action</th></tr></thead>
+          <tbody id="events"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="foot">Raw metrics: <a href="/actuator/prometheus" target="_blank" rel="noopener">/actuator/prometheus</a>. With Docker Compose, Prometheus runs on <a href="http://localhost:9090" target="_blank" rel="noopener">port 9090</a> and Grafana on <a href="http://localhost:3000" target="_blank" rel="noopener">port 3000</a>.</p>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const POLL_MS = 1500;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const LEVEL_COLOR = { LOW: 'var(--allow)', MEDIUM: 'var(--throttle)', HIGH: 'var(--strong)', CRITICAL: 'var(--block)' };
+  const LEVEL_NAME = { LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', CRITICAL: 'Critical' };
+  const ACTION_NAME = { ALLOW: 'Allowed', THROTTLE: 'Throttled', STRONG_THROTTLE: 'Strongly throttled', RATE_LIMITED: 'Rate limited', BLOCK: 'Blocked' };
+  const fmt = n => Number(n).toLocaleString();
+
+  let token = null, user = null, timer = null, paused = false, filter = 'all';
+  let clockOffset = 0, history = [], seen = new Set(), firstEvents = true, lastProfiles = [];
+
+  // ---------- theme ----------
+  const root = document.documentElement;
+  function currentTheme() { return root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
+  function syncThemeBtn() { $('themeBtn').textContent = currentTheme() === 'dark' ? 'Light mode' : 'Dark mode'; }
+  try { const t = localStorage.getItem('sg-theme'); if (t) root.dataset.theme = t; } catch (e) {}
+  $('themeBtn').addEventListener('click', () => {
+    root.dataset.theme = currentTheme() === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('sg-theme', root.dataset.theme); } catch (e) {}
+    syncThemeBtn();
+  });
+  syncThemeBtn();
+
+  // ---------- toast ----------
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  // ---------- auth ----------
+  $('loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = $('loginErr'), btn = $('loginBtn');
+    err.textContent = ''; btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const r = await fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: $('u').value.trim(), password: $('p').value }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 429) err.textContent = `Too many attempts from this address. Try again in ${j.retryAfterSeconds || 60} seconds.`;
+      else if (!r.ok) err.textContent = 'Wrong username or password.';
+      else if (j.role !== 'ADMIN') err.textContent = `${j.username} is not an administrator. Sign in with an admin account.`;
+      else { token = j.token; user = j.username; start(); }
+    } catch (ex) {
+      err.textContent = "Can't reach the gateway. Check that it is running on this address.";
+    } finally { btn.disabled = false; btn.textContent = 'Sign in'; }
+  });
+
+  function start() {
+    $('whoName').textContent = user;
+    $('loginView').hidden = true; $('app').hidden = false;
+    history = []; seen = new Set(); firstEvents = true;
+    refresh(); timer = setInterval(refresh, POLL_MS);
+  }
+  function signOut(message) {
+    token = null; clearInterval(timer);
+    $('app').hidden = true; $('loginView').hidden = false;
+    if (message) $('loginErr').textContent = message;
+  }
+  $('logoutBtn').addEventListener('click', () => signOut());
+
+  async function api(path, method = 'GET') {
+    const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + token } });
+    if (r.status === 401 || r.status === 403) { signOut('Your session has ended. Sign in again.'); throw new Error('auth'); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+
+  // ---------- actions ----------
+  document.querySelectorAll('[data-demo]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await api('/api/admin/demo/' + b.dataset.demo, 'POST'); toast(b.dataset.done); refresh(); }
+    catch (e) { if (e.message !== 'auth') toast("The simulation didn't start. Check that the gateway is running."); }
+    finally { setTimeout(() => (b.disabled = false), 600); }
+  }));
+  $('clients').addEventListener('click', async e => {
+    const b = e.target.closest('[data-unblock]'); if (!b) return;
+    b.disabled = true;
+    try { await api('/api/admin/unblock?key=' + encodeURIComponent(b.dataset.unblock), 'POST'); toast(`Unblocked ${b.dataset.unblock}`); refresh(); }
+    catch (err) { if (err.message !== 'auth') toast(`Couldn't unblock ${b.dataset.unblock}`); b.disabled = false; }
+  });
+  document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {
+    filter = b.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    renderEvents(lastEvents, true);
+  }));
+  $('pauseBtn').addEventListener('click', e => {
+    paused = !paused; e.currentTarget.textContent = paused ? 'Resume' : 'Pause';
+    e.currentTarget.setAttribute('aria-pressed', String(paused));
+  });
+
+  // ---------- rendering ----------
+  function setLive(ok) {
+    $('live').className = 'live ' + (ok ? 'on' : 'off');
+    $('liveText').textContent = ok ? 'Live' : 'Reconnecting…';
+  }
+
+  function renderSummary(o) {
+    const blocked = o.blockedClients, n = o.trackedClients;
+    const parts = [];
+    if (n === 0) { $('summary').innerHTML = 'No traffic yet. <span class="muted">The gateway is waiting for requests.</span>'; return; }
+    parts.push(`<b>${fmt(n)}</b> ${n === 1 ? 'client' : 'clients'} active`);
+    parts.push(blocked > 0 ? `<b class="bad">${fmt(blocked)} blocked</b>` : 'none blocked');
+    const risky = o.high + o.medium;
+    if (risky > 0) parts.push(`<b>${fmt(risky)}</b> being throttled`);
+    $('summary').innerHTML = parts.join(', ') + `. <span class="muted">${fmt(o.totalEvents)} requests checked so far, ${fmt(o.deniedEvents)} denied.</span>`;
+  }
+
+  function renderLadder(profiles) {
+    const shown = profiles.slice(0, 10);
+    $('trackEmpty').hidden = shown.length > 0;
+    const dots = $('dots');
+    const existing = new Map([...dots.children].map(el => [el.dataset.key, el]));
+    // spread dots vertically so labels don't collide
+    const rows = shown.length;
+    shown.forEach((p, i) => {
+      let el = existing.get(p.key);
+      const wasBlocked = el && el.classList.contains('blocked');
+      if (!el) {
+        el = document.createElement('div'); el.className = 'dot'; el.dataset.key = p.key;
+        el.innerHTML = '<i></i><span></span>'; el.style.left = '0%'; dots.appendChild(el);
+      }
+      existing.delete(p.key);
+      const top = 62 + (rows <= 1 ? 70 : (i * (160 / Math.max(1, rows - 1))));
+      el.style.top = top + 'px';
+      requestAnimationFrame(() => { el.style.left = Math.max(0.5, Math.min(99.5, p.risk)) + '%'; });
+      el.querySelector('i').style.background = LEVEL_COLOR[p.level];
+      el.querySelector('span').innerHTML = `${esc(p.key)} <b>${p.risk}</b>`;
+      el.classList.toggle('flip', p.risk > 62);
+      el.classList.toggle('blocked', p.blocked);
+      if (p.blocked && !wasBlocked) { el.querySelector('i').style.animation = 'none'; void el.offsetWidth; el.querySelector('i').style.animation = ''; }
+      el.title = `${p.key}: risk ${p.risk}, ${LEVEL_NAME[p.level]}${p.blocked ? ', blocked' : ''}`;
+    });
+    existing.forEach(el => el.remove());
+  }
+
+  function describeKey(key) {
+    if (key.startsWith('user:')) return ['User', key.slice(5)];
+    if (key.startsWith('ip:')) return ['IP address', key.slice(3)];
+    if (key.startsWith('sim:')) return ['Simulation', key.slice(4)];
+    return ['Client', key];
+  }
+
+  function renderClients(profiles, now) {
+    if (!profiles.length) { $('clients').innerHTML = '<tr><td colspan="6" class="empty">Nobody has called the API yet. Start an attack from the panel on the right to see a client appear.</td></tr>'; return; }
+    $('clients').innerHTML = profiles.map(p => {
+      const [kind, name] = describeKey(p.key);
+      const left = Math.max(0, Math.ceil((p.blockedUntil - now) / 1000));
+      const status = p.blocked
+        ? `<span class="countdown">Blocked, ${left} s left</span> <button class="btn quiet small" data-unblock="${esc(p.key)}">Unblock</button>`
+        : `<span style="color:var(--ink-2)">${p.level === 'LOW' ? 'Allowed' : 'Throttled'}</span>`;
+      return `<tr>
+        <td class="client">${esc(name)}<small>${kind}${p.offences ? `, blocked ${p.offences === 1 ? 'once' : p.offences + ' times'}` : ''}</small></td>
+        <td><span class="level ${p.level}">${LEVEL_NAME[p.level]}</span></td>
+        <td><div class="risk"><b>${p.risk}</b><div class="meter"><span style="width:${p.risk}%;background:${LEVEL_COLOR[p.level]}"></span></div></div></td>
+        <td class="hide-sm">${p.requestsInWindow}</td>
+        <td class="reason hide-sm" title="${esc(p.lastReason)}">${esc(p.lastReason) || '—'}</td>
+        <td>${status}</td></tr>`;
+    }).join('');
+  }
+
+  function renderTraffic(o) {
+    history.push(o.requestsInWindow); if (history.length > 80) history.shift();
+    const max = Math.max(10, ...history), w = 300, h = 70;
+    const series = history.length === 1 ? [history[0], history[0]] : history;
+    const step = w / (series.length - 1);
+    const pts = series.map((v, i) => [+(i * step).toFixed(1), +(h - 4 - (v / max) * (h - 10)).toFixed(1)]);
+    const line = pts.map(p => p.join(',')).join(' ');
+    const area = pts.length ? `M${pts[0][0]},${h} L${line.replace(/ /g, ' L')} L${pts[pts.length - 1][0]},${h} Z` : '';
+    $('spark').innerHTML = pts.length
+      ? `<path d="${area}" fill="var(--cobalt)" opacity=".12"/><polyline points="${line}" fill="none" stroke="var(--cobalt)" stroke-width="2" vector-effect="non-scaling-stroke"/>`
+      : '';
+    $('mReq').textContent = fmt(o.requestsInWindow);
+    const hf = Math.round(o.healthFactor * 100);
+    $('mHealth').textContent = hf >= 100 ? 'Full speed' : hf + '% (overloaded)';
+    $('mHealth').style.color = hf >= 100 ? '' : 'var(--strong)';
+    $('mDenied').textContent = fmt(o.deniedEvents);
+    $('mTotal').textContent = fmt(o.totalEvents);
+  }
+
+  let lastEvents = [];
+  function renderEvents(events, force) {
+    lastEvents = events;
+    if (paused && !force) return;
+    const list = events.filter(e => filter === 'all' ? true : filter === 'denied' ? e.status === 429 : e.status >= 400 && e.status !== 429);
+    if (!list.length) {
+      $('events').innerHTML = `<tr><td colspan="6" class="empty">${filter === 'all' ? 'No requests yet.' : filter === 'denied' ? 'No requests have been denied.' : 'No error responses yet.'}</td></tr>`;
+      return;
+    }
+    $('events').innerHTML = list.map(e => {
+      const id = e.timestamp + '|' + e.clientKey + '|' + e.path + '|' + e.status;
+      const fresh = !firstEvents && !seen.has(id);
+      seen.add(id);
+      const sc = e.status === 429 ? 's429' : e.status >= 500 ? 's5' : e.status >= 400 ? 's4' : 's2';
+      return `<tr class="${fresh ? 'fresh' : ''}">
+        <td>${new Date(e.timestamp).toLocaleTimeString()}</td>
+        <td>${esc(e.clientKey)}</td>
+        <td class="path" title="${esc(e.path)}"><span class="method">${esc(e.method)}</span>${esc(e.path)}</td>
+        <td class="status ${sc}">${e.status}</td>
+        <td>${e.risk}</td>
+        <td><span class="level ${e.level}">${ACTION_NAME[e.action] || esc(e.action)}</span></td></tr>`;
+    }).join('');
+    firstEvents = false;
+    if (seen.size > 5000) seen = new Set([...seen].slice(-2000));
+  }
+
+  async function refresh() {
+    if (!token) return;
+    try {
+      const [o, ev] = await Promise.all([api('/api/admin/overview'), api('/api/admin/events?limit=80')]);
+      clockOffset = o.timestamp - Date.now();
+      setLive(true);
+      lastProfiles = o.profiles;
+      renderSummary(o);
+      renderLadder(o.profiles);
+      renderClients(o.profiles, Date.now() + clockOffset);
+      renderTraffic(o);
+      renderEvents(ev);
+    } catch (e) {
+      if (e.message !== 'auth') setLive(false);
+    }
+  }
+})();
+</script>
+</body>
+</html>

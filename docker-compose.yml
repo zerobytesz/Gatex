@@ -1,0 +1,83 @@
+# Full stack: MySQL + user-service + order-service + gateway + Prometheus + Grafana
+#   docker compose up --build
+# Gateway/dashboard: http://localhost:8080   Prometheus: http://localhost:9090   Grafana: http://localhost:3000 (admin/admin)
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: smartgateway
+      MYSQL_USER: gateway
+      MYSQL_PASSWORD: gateway
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ugateway", "-pgateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  user-service:
+    build:
+      context: .
+      args:
+        MODULE: user-service
+    expose:
+      - "8081"
+
+  order-service:
+    build:
+      context: .
+      args:
+        MODULE: order-service
+    expose:
+      - "8082"
+
+  gateway:
+    build:
+      context: .
+      args:
+        MODULE: gateway
+    depends_on:
+      mysql:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:mysql://mysql:3306/smartgateway?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: gateway
+      DB_PASSWORD: gateway
+      USER_SERVICE_URL: http://user-service:8081
+      ORDER_SERVICE_URL: http://order-service:8082
+      JWT_SECRET: ${JWT_SECRET:-docker-demo-secret-change-me-0123456789-abcdefghijklmnop}
+    ports:
+      - "8080:8080"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  mysql-data:

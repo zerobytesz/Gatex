@@ -1,0 +1,94 @@
+# Smart API Gateway - default profile (local run, embedded H2 database in MySQL mode).
+# The "docker" profile (application-docker.yml) switches to MySQL.
+server:
+  port: ${GATEWAY_PORT:8080}
+
+spring:
+  application:
+    name: smart-api-gateway
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:smartgateway;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+  sql:
+    init:
+      mode: always
+  cloud:
+    gateway:
+      metrics:
+        enabled: true
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 10s
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/users/**
+        - id: order-service
+          uri: ${ORDER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/orders/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: smart-api-gateway
+
+smartgateway:
+  # Only enable when the gateway runs behind a trusted reverse proxy that sets X-Forwarded-For.
+  trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}
+  jwt:
+    # Use a long random value in any real deployment (environment variable JWT_SECRET).
+    secret: ${JWT_SECRET:demo-only-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz}
+    ttl-seconds: 3600
+    issuer: smart-api-gateway
+  seed:
+    demo-password: ${DEMO_PASSWORD:password123}
+    admin-password: ${ADMIN_PASSWORD:admin123}
+  audit:
+    retention-days: 7
+    flush-interval-ms: 1000
+  threat:
+    window-seconds: 10
+    normal-limit: 50              # requests per window for one user
+    ip-limit-multiplier: 5        # IP scope tolerates 5x (shared NAT / proxies)
+    rate-weight: 2
+    rate-cap: 60
+    burst-cap: 30
+    failure-weight: 5
+    failure-cap: 25
+    suspicious-weight: 15
+    suspicious-cap: 60
+    failed-login-weight: 12
+    failed-login-cap: 80
+    decay-tau-seconds: 60
+    medium-threshold: 30
+    high-threshold: 60
+    critical-threshold: 80
+    block-seconds: 60
+    max-block-escalation: 4       # repeat offenders: 60s, 120s, 240s, 480s, 960s
+    bucket-capacity-low: 40
+    bucket-refill-low: 10
+    bucket-capacity-medium: 20
+    bucket-refill-medium: 4
+    bucket-capacity-high: 8
+    bucket-refill-high: 1
+    throttle-delay-medium-ms: 100
+    throttle-delay-high-ms: 300
+    global-capacity-per-window: 5000
+    min-health-factor: 0.25
+    idle-evict-seconds: 1800
+    max-profiles: 100000
+    eviction-interval-ms: 30000
+
+logging:
+  level:
+    com.smartgateway: INFO

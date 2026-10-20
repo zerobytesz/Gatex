@@ -1,0 +1,17 @@
+# Docker profile: MySQL database and backend services addressed by their compose service names.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://mysql:3306/smartgateway?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:gateway}
+    password: ${DB_PASSWORD:gateway}
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://user-service:8081}
+          predicates:
+            - Path=/api/users/**
+        - id: order-service
+          uri: ${ORDER_SERVICE_URL:http://order-service:8082}
+          predicates:
+            - Path=/api/orders/**
